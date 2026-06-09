@@ -352,6 +352,78 @@ export async function setPlatformConfig(
 }
 
 // ---------------------------------------------------------------------------
+// Suggested prompts
+// ---------------------------------------------------------------------------
+export async function suggestPrompts(brandId: string): Promise<
+  ActionResult & { suggestions?: import("./suggested-prompts").SuggestedPrompt[]; source?: string }
+> {
+  const supabase = getAdminClient();
+  const [{ data: brand, error: brandErr }, { data: competitors }, { data: prompts }] =
+    await Promise.all([
+      supabase.from("brands").select("*").eq("id", brandId).single(),
+      supabase.from("competitors").select("*").eq("brand_id", brandId),
+      supabase.from("tracked_prompts").select("prompt_text").eq("brand_id", brandId),
+    ]);
+  if (brandErr || !brand) return fail(brandErr?.message ?? "Brand not found");
+
+  const { generateSuggestedPrompts } = await import("./suggested-prompts");
+  const { suggestions, source } = await generateSuggestedPrompts(
+    brand as import("./types").Brand,
+    (competitors ?? []) as import("./types").Competitor[],
+    (prompts ?? []).map((p) => p.prompt_text),
+  );
+
+  return { ok: true, suggestions, source, message: `Generated ${suggestions.length} suggestions` };
+}
+
+export async function addSuggestedPrompt(
+  brandId: string,
+  promptText: string,
+  category: string,
+): Promise<ActionResult> {
+  const parsed = promptSchema.safeParse({ prompt_text: promptText, category });
+  if (!parsed.success) return fail(parsed.error.issues[0].message);
+
+  const supabase = getAdminClient();
+  const { data: prompt, error } = await supabase
+    .from("tracked_prompts")
+    .insert({
+      brand_id: brandId,
+      prompt_text: parsed.data.prompt_text,
+      category: parsed.data.category ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) return fail(error.message);
+
+  const { error: cfgErr } = await supabase.from("prompt_platform_config").insert(
+    PLATFORMS.map((platform) => ({
+      prompt_id: prompt.id,
+      platform,
+      model_name: DEFAULT_MODELS[platform],
+      is_active: true,
+    })),
+  );
+  if (cfgErr) return fail(cfgErr.message);
+
+  revalidatePath("/prompts");
+  return { ok: true };
+}
+
+export async function addAllSuggestedPrompts(
+  brandId: string,
+  items: { prompt_text: string; category: string }[],
+): Promise<ActionResult> {
+  let added = 0;
+  for (const item of items) {
+    const res = await addSuggestedPrompt(brandId, item.prompt_text, item.category);
+    if (res.ok) added += 1;
+  }
+  revalidatePath("/prompts");
+  return { ok: true, message: `Added ${added} prompt${added === 1 ? "" : "s"}` };
+}
+
+// ---------------------------------------------------------------------------
 // Run Now + Jobs
 // ---------------------------------------------------------------------------
 export async function runPromptNow(promptId: string): Promise<ActionResult> {

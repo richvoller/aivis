@@ -69,13 +69,17 @@ export function mockLlmResponse(args: {
     `top alternatives for ${user_prompt}`,
   ].slice(0, 2 + Math.floor(rng() * 2));
 
+  const extraEntities = mentioned
+    ? competitorNames.slice(0, 2)
+    : ["Monday.com", "Pipedrive", ...competitorNames].slice(0, 3);
+
   return {
     platform,
     model_name,
     response_text,
     cited_urls,
     fan_out_queries,
-    brand_entities: mentioned ? [brandName] : [],
+    brand_entities: mentioned ? [brandName, ...extraEntities] : extraEntities,
     money_spent: 0,
     raw: { mock: true, platform, model_name, user_prompt },
   };

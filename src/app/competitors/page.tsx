@@ -20,7 +20,7 @@ export default async function CompetitorsPage() {
     <>
       <PageHeader
         title="Competitors"
-        description={`Competitor domains for ${brand.name}. These feed the weekly share-of-voice job.`}
+        description={`Known competitors for ${brand.name} — used for share-of-voice benchmarking and to flag when they appear in tracked responses.`}
       />
       <CompetitorManager brandId={brand.id} competitors={competitors} />
     </>

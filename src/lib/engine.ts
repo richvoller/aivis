@@ -86,6 +86,7 @@ export async function runPromptPlatform(args: {
       brand_position: signals.brand_position,
       response_text: signals.response_text,
       competitors_mentioned: signals.competitors_mentioned,
+      entities_detected: signals.entities_detected,
       cited_urls: signals.cited_urls,
       fan_out_queries: signals.fan_out_queries,
       raw_response: res.raw,

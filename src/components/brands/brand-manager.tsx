@@ -73,8 +73,12 @@ function BrandDialog({
               id="description"
               name="description"
               defaultValue={brand?.description ?? ""}
-              placeholder="Optional notes about this brand"
+              placeholder="e.g. B2B CRM for small sales teams"
             />
+            <p className="text-xs text-muted-foreground">
+              Used by AI brand research and suggested prompts. Does not affect mention detection or
+              API calls directly.
+            </p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>

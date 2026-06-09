@@ -219,12 +219,34 @@ export function ResponseExplorer({
                 {selected.competitors_mentioned?.length ? (
                   <div>
                     <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
-                      Competitors mentioned
+                      Known competitors mentioned
+                    </p>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      From your competitor list — used for share-of-voice benchmarking.
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {selected.competitors_mentioned.map((c, i) => (
                         <Badge key={i} variant="muted">
                           {c}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {selected.entities_detected?.length ? (
+                  <div>
+                    <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                      Other brands detected
+                    </p>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      Auto-detected from AI brand entities and cited domains — not limited to your
+                      competitor list.
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selected.entities_detected.map((e, i) => (
+                        <Badge key={i} variant="secondary">
+                          {e}
                         </Badge>
                       ))}
                     </div>

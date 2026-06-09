@@ -15,7 +15,10 @@ export default async function BrandSettingsPage({
   return (
     <>
       <PageHeader title={brand.name} description={`Brand settings and profile for ${brand.name}`} />
-      <BrandSettings brand={brand} />
+      <BrandSettings
+        brand={brand}
+        aiKeysConfigured={!!process.env.PERPLEXITY_API_KEY && !!process.env.OPENAI_API_KEY}
+      />
     </>
   );
 }

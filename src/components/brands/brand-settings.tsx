@@ -14,7 +14,13 @@ import { reanalyzeBrand, updateBrandProfile, generatePromptsFromCategories } fro
 import { formatDate } from "@/lib/utils";
 import type { Brand } from "@/lib/types";
 
-export function BrandSettings({ brand }: { brand: Brand }) {
+export function BrandSettings({
+  brand,
+  aiKeysConfigured,
+}: {
+  brand: Brand;
+  aiKeysConfigured: boolean;
+}) {
   const router = useRouter();
   const [analyzing, startAnalyze] = React.useTransition();
   const [saving, startSave] = React.useTransition();
@@ -36,6 +42,7 @@ export function BrandSettings({ brand }: { brand: Brand }) {
       setSaveMsg(null);
       const res = await generatePromptsFromCategories(brand.id);
       setSaveMsg(res.ok ? (res.message ?? "Prompts generated") : (res.error ?? "Failed"));
+      if (res.ok) router.refresh();
     });
   }
 
@@ -77,9 +84,9 @@ export function BrandSettings({ brand }: { brand: Brand }) {
             variant="outline"
             size="sm"
             onClick={handleReanalyze}
-            disabled={analyzing || !process.env.PERPLEXITY_API_KEY || !process.env.OPENAI_API_KEY}
+            disabled={analyzing || !aiKeysConfigured}
             title={
-              !process.env.PERPLEXITY_API_KEY || !process.env.OPENAI_API_KEY
+              !aiKeysConfigured
                 ? "Add PERPLEXITY_API_KEY and OPENAI_API_KEY to .env.local"
                 : "Re-analyze brand using AI"
             }
@@ -225,7 +232,7 @@ export function BrandSettings({ brand }: { brand: Brand }) {
             <Separator />
             <ArrayInputSection
               label="Categories"
-              description="Used when generating prompts for AI visibility reports."
+              description="Market topics for auto-generating prompts (e.g. CRM, sales automation). Separate from prompt intent categories on the Prompts page."
               items={brand.categories}
               fieldName="categories"
             />

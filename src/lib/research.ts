@@ -81,8 +81,12 @@ export async function reanalyzeBrand(brandName: string, domain: string, descript
   const websiteUrl = domain.startsWith("http") ? domain : `https://${domain}`;
   const siteText = await fetchWebsiteText(websiteUrl);
 
+  const descriptionContext = description?.trim()
+    ? `\n\nThe brand owner provided this description — use it as a starting hint but verify independently:\n"${description.trim()}"`
+    : "";
+
   // Step 1: Perplexity research
-  const researchPrompt = `Research the brand "${brandName}" (website: ${websiteUrl}) and gather comprehensive information:
+  const researchPrompt = `Research the brand "${brandName}" (website: ${websiteUrl}) and gather comprehensive information:${descriptionContext}
 - Industry, headquarters, founding year, company size
 - Products and services
 - Key facts and notable claims (with sources)
@@ -105,6 +109,9 @@ Provide a detailed summary with citations to sources.`;
   // Step 2: OpenAI structured extraction
   const openaiModel = process.env.OPENAI_MODEL || "gpt-4o";
   const extractionPrompt = `You are a brand research analyst. Extract a structured brand profile from the following research about "${brandName}" (${websiteUrl}).
+
+Owner-provided description (may be partial — verify against research):
+${description?.trim() || "[none provided]"}
 
 Website text context (first ~4k chars):
 ${siteText || "[website text unavailable]"}

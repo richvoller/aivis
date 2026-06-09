@@ -311,7 +311,7 @@ export function PromptManager({
       {prompts.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            No prompts yet. Add prompts to start tracking AI visibility.
+            No prompts yet. Use suggested prompts above, or add your own manually.
           </CardContent>
         </Card>
       ) : (

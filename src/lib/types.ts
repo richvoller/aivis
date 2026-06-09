@@ -110,6 +110,7 @@ export interface ResponseSnapshot {
   brand_position: number | null;
   response_text: string | null;
   competitors_mentioned: string[] | null;
+  entities_detected: string[] | null;
   cited_urls: string[] | null;
   fan_out_queries: string[] | null;
   raw_response: unknown;

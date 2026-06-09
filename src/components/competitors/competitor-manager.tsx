@@ -37,11 +37,16 @@ export function CompetitorManager({
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Add the competitors you want to benchmark against. When responses are collected, the app also
+        auto-detects other brands mentioned — see <strong>Other brands detected</strong> on the
+        Responses page. Other brands won&apos;t appear here unless you add them.
+      </p>
       <Card>
         <CardContent className="p-5">
           <form ref={formRef} action={add} className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1 space-y-1">
-              <label className="text-sm font-medium">Competitor domain</label>
+              <label className="text-sm font-medium">Known competitor domain</label>
               <Input name="domain" placeholder="hubspot.com" required />
             </div>
             <div className="flex-1 space-y-1">
@@ -61,7 +66,7 @@ export function CompetitorManager({
         <CardContent className="p-0">
           {competitors.length === 0 ? (
             <p className="p-8 text-center text-sm text-muted-foreground">
-              No competitors yet. Add domains to benchmark share of voice.
+              No known competitors yet. Add domains you want to track for share-of-voice benchmarking.
             </p>
           ) : (
             <Table>
