@@ -76,6 +76,156 @@ export async function deleteBrand(brandId: string): Promise<ActionResult> {
 }
 
 // ---------------------------------------------------------------------------
+// Brand profile actions
+// ---------------------------------------------------------------------------
+export async function reanalyzeBrand(brandId: string): Promise<ActionResult> {
+  const supabase = getAdminClient();
+  const { data: brand, error } = await supabase
+    .from("brands")
+    .select("name,domain,description")
+    .eq("id", brandId)
+    .single();
+  if (error) return fail(error.message);
+
+  // Set status to analyzing
+  await supabase
+    .from("brands")
+    .update({ profile_status: "analyzing", profile_error: null })
+    .eq("id", brandId);
+
+  try {
+    const { reanalyzeBrand: reanalyze } = await import("@/lib/research");
+    const result = await reanalyze(brand.name, brand.domain, brand.description);
+
+    if (result.error) {
+      await supabase
+        .from("brands")
+        .update({ profile_status: "error", profile_error: result.error })
+        .eq("id", brandId);
+      return fail(result.error);
+    }
+
+    if (!result.profile) {
+      await supabase
+        .from("brands")
+        .update({ profile_status: "error", profile_error: "No profile returned from AI" })
+        .eq("id", brandId);
+      return fail("No profile returned from AI");
+    }
+
+    // Update the brand with the extracted profile
+    const { error: updateError } = await supabase
+      .from("brands")
+      .update({
+        tagline: result.profile.tagline,
+        value_proposition: result.profile.value_proposition,
+        mission_statement: result.profile.mission_statement,
+        industry: result.profile.industry,
+        headquarters: result.profile.headquarters,
+        founded_year: result.profile.founded_year,
+        company_size: result.profile.company_size,
+        products: result.profile.products,
+        services: result.profile.services,
+        key_facts: result.profile.key_facts,
+        key_people: result.profile.key_people,
+        research_sources: result.sources ?? result.profile.research_sources,
+        brand_aliases: result.profile.brand_aliases,
+        categories: result.profile.categories,
+        content_language: result.profile.content_language,
+        tone_of_voice: result.profile.tone_of_voice,
+        writing_style: result.profile.writing_style,
+        ai_image_style: result.profile.ai_image_style,
+        banned_phrases: result.profile.banned_phrases,
+        primary_country: result.profile.primary_country,
+        primary_language: result.profile.primary_language,
+        profile_status: "ready",
+        profile_generated_at: new Date().toISOString(),
+        profile_error: null,
+      })
+      .eq("id", brandId);
+
+    if (updateError) return fail(updateError.message);
+
+    revalidatePath("/brands/[id]", "layout");
+    revalidatePath("/", "layout");
+    return { ok: true, message: "Profile analyzed and updated" };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Analysis failed";
+    await supabase
+      .from("brands")
+      .update({ profile_status: "error", profile_error: msg })
+      .eq("id", brandId);
+    return fail(msg);
+  }
+}
+
+export async function updateBrandProfile(brandId: string, formData: FormData): Promise<ActionResult> {
+  const supabase = getAdminClient();
+  const data: Record<string, unknown> = {};
+  for (const [key, value] of formData.entries()) {
+    if (key.endsWith("[]")) {
+      const realKey = key.slice(0, -2);
+      data[realKey] = formData.getAll(key);
+    } else if (key.startsWith("products.") || key.startsWith("services.") || key.startsWith("key_facts.") || key.startsWith("key_people.") || key.startsWith("research_sources.")) {
+      // Skip array-of-objects for now — handled by the page's specialised form
+      continue;
+    } else if (value === "") {
+      data[key] = null;
+    } else if (key === "founded_year") {
+      data[key] = value ? Number(value) : null;
+    } else {
+      data[key] = value;
+    }
+  }
+
+  const { error } = await supabase.from("brands").update(data).eq("id", brandId);
+  if (error) return fail(error.message);
+  revalidatePath("/brands/[id]", "layout");
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Prompt generation from categories
+// ---------------------------------------------------------------------------
+export async function generatePromptsFromCategories(brandId: string): Promise<ActionResult> {
+  const supabase = getAdminClient();
+  const { data: brand, error } = await supabase
+    .from("brands")
+    .select("name,description,categories")
+    .eq("id", brandId)
+    .single();
+  if (error) return fail(error.message);
+
+  const categories = (brand as { categories?: string[] }).categories ?? [];
+  if (categories.length === 0) return fail("No categories defined for this brand");
+
+  const brandName = (brand as { name: string }).name;
+  const brandDesc = (brand as { description: string | null }).description ?? "";
+
+  // Generate prompts for each category
+  const prompts = categories.map((cat) => {
+    const basePrompt = `What are the best ${cat.toLowerCase()} options for ${brandName}?`;
+    const enhancedPrompt = brandDesc
+      ? `${basePrompt} ${brandName} is ${brandDesc}. Provide a comprehensive comparison.`
+      : basePrompt;
+    return {
+      brand_id: brandId,
+      prompt_text: enhancedPrompt,
+      category: cat,
+      is_active: true,
+    };
+  });
+
+  const { error: insertError } = await supabase.from("tracked_prompts").insert(prompts);
+  if (insertError) return fail(insertError.message);
+
+  revalidatePath("/prompts", "layout");
+  revalidatePath("/", "layout");
+  return { ok: true, message: `Generated ${prompts.length} prompts from categories` };
+}
+
+// ---------------------------------------------------------------------------
 // Competitors
 // ---------------------------------------------------------------------------
 export async function createCompetitor(brandId: string, formData: FormData): Promise<ActionResult> {

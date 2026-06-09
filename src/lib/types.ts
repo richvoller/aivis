@@ -1,10 +1,71 @@
 import type { Platform, PromptCategory, Sentiment, Severity } from "./constants";
 
+export interface NamedItem {
+  name: string;
+  description: string;
+}
+
+export interface KeyFact {
+  fact: string;
+  source_url: string | null;
+}
+
+export interface KeyPerson {
+  name: string;
+  role: string;
+}
+
+export interface ResearchSource {
+  title: string;
+  url: string;
+}
+
+export type ProfileStatus = "empty" | "analyzing" | "ready" | "error";
+
 export interface Brand {
   id: string;
   name: string;
   domain: string;
   description: string | null;
+
+  // Brand information
+  tagline: string | null;
+  value_proposition: string | null;
+  mission_statement: string | null;
+
+  // Company details
+  industry: string | null;
+  headquarters: string | null;
+  founded_year: number | null;
+  company_size: string | null;
+
+  // Structured arrays
+  products: NamedItem[];
+  services: NamedItem[];
+  key_facts: KeyFact[];
+  key_people: KeyPerson[];
+  research_sources: ResearchSource[];
+
+  // Detection + prompt-generation inputs
+  brand_aliases: string[];
+  categories: string[];
+
+  // Content generation preferences
+  content_language: string | null;
+  tone_of_voice: string | null;
+  writing_style: string | null;
+  ai_image_style: string | null;
+  banned_phrases: string[];
+
+  // Default location & language
+  primary_country: string | null;
+  primary_language: string | null;
+
+  // Analysis metadata
+  profile_status: ProfileStatus;
+  profile_generated_at: string | null;
+  profile_error: string | null;
+
   created_at: string;
   updated_at: string;
 }

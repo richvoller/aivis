@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Pencil, Plus, Trash2, Loader2, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -140,6 +141,11 @@ export function BrandManager({ brands }: { brands: Brand[] }) {
                     <p className="truncate text-sm text-muted-foreground">{brand.domain}</p>
                   </div>
                   <div className="flex shrink-0">
+                    <Link href={`/brands/${brand.id}`}>
+                      <Button variant="ghost" size="icon" title="Brand settings">
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </Link>
                     <BrandDialog
                       brand={brand}
                       trigger={

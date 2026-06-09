@@ -24,12 +24,17 @@ const NEGATIVE_WORDS = [
   "drawback", "complaint", "disappointing", "overpriced",
 ];
 
-/** Build the set of brand aliases to match against (name + domain root). */
-function brandAliases(brandName: string, brandDomain: string): string[] {
+/** Build the set of brand aliases to match against (name + domain root + profile aliases). */
+function brandAliases(brandName: string, brandDomain: string, profileAliases: string[] = []): string[] {
   const aliases = new Set<string>();
   if (brandName.trim()) aliases.add(brandName.trim().toLowerCase());
   const domainRoot = normaliseDomain(brandDomain).split(".")[0];
   if (domainRoot) aliases.add(domainRoot.toLowerCase());
+  // Add profile aliases if provided
+  for (const alias of profileAliases) {
+    const a = alias.trim().toLowerCase();
+    if (a) aliases.add(a);
+  }
   return [...aliases].filter(Boolean);
 }
 
@@ -67,6 +72,7 @@ function classifySentiment(text: string, mentionIndex: number): Sentiment {
 export interface ParseInput {
   brandName: string;
   brandDomain: string;
+  brandAliases?: string[];
   competitors: { domain: string; name?: string | null }[];
 }
 
@@ -76,7 +82,7 @@ export function parseResponse(
 ): ParsedSignals {
   const text = res.response_text ?? "";
   const lower = text.toLowerCase();
-  const aliases = brandAliases(input.brandName, input.brandDomain);
+  const aliases = brandAliases(input.brandName, input.brandDomain, input.brandAliases);
 
   // 1) DataForSEO brand entities (authoritative when present)
   const entityMatch = res.brand_entities.some((e) =>

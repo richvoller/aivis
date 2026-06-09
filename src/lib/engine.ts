@@ -70,6 +70,7 @@ export async function runPromptPlatform(args: {
   const signals = parseResponse(res, {
     brandName: brand.name,
     brandDomain: brand.domain,
+    brandAliases: brand.brand_aliases ?? [],
     competitors: competitors.map((c) => ({ domain: c.domain, name: c.name })),
   });
 
