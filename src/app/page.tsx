@@ -1,65 +1,109 @@
-import Image from "next/image";
+import { Activity, BarChart3, Gauge, Layers } from "lucide-react";
+import { getCurrentBrand } from "@/lib/current-brand";
+import { getOverview } from "@/lib/queries";
+import { PageHeader } from "@/components/page-header";
+import { KpiCard } from "@/components/kpi-card";
+import { NoBrand } from "@/components/no-brand";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { VisibilityTrend } from "@/components/charts/visibility-trend";
+import { PlatformDonut } from "@/components/charts/platform-donut";
+import { PlatformBadge } from "@/components/badges";
+import { RunJobButton } from "@/components/run-job-button";
+import { formatDateTime, pct } from "@/lib/utils";
 
-export default function Home() {
+export default async function DashboardPage() {
+  const brand = await getCurrentBrand();
+  if (!brand) {
+    return (
+      <>
+        <PageHeader title="Dashboard" description="AI visibility overview" />
+        <NoBrand />
+      </>
+    );
+  }
+
+  const overview = await getOverview(brand.id, 30);
+  const { kpis, trend, breakdown } = overview;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <>
+      <PageHeader
+        title="Dashboard"
+        description={`AI visibility for ${brand.name} (${brand.domain}) — last 30 days`}
+      >
+        <RunJobButton brandId={brand.id} job="responses" label="Collect responses" />
+      </PageHeader>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          label="AI Visibility Score"
+          value={kpis.visibilityScore}
+          sub="mention rate across all platforms"
+          icon={Gauge}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        <KpiCard
+          label="Mention Rate"
+          value={pct(kpis.mentionRate, 1)}
+          sub={`${kpis.totalSnapshots} snapshots`}
+          icon={Activity}
+        />
+        <KpiCard
+          label="Platforms Tracked"
+          value={kpis.platformsTracked}
+          sub="ChatGPT · Claude · Gemini · Perplexity"
+          icon={Layers}
+        />
+        <KpiCard
+          label="Last Updated"
+          value={kpis.lastUpdated ? formatDateTime(kpis.lastUpdated).split(",")[0] : "—"}
+          sub={kpis.lastUpdated ? formatDateTime(kpis.lastUpdated) : "No data yet"}
+          icon={BarChart3}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Visibility Trend</CardTitle>
+            <CardDescription>Daily mention rate per platform</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {trend.length ? (
+              <VisibilityTrend data={trend} />
+            ) : (
+              <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+                No snapshots in the last 30 days
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Platform Breakdown</CardTitle>
+            <CardDescription>Mentions by platform</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PlatformDonut data={breakdown} />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {breakdown.map((b) => (
+          <Card key={b.platform}>
+            <CardContent className="p-5">
+              <div className="mb-2 flex items-center justify-between">
+                <PlatformBadge platform={b.platform} />
+                <span className="text-sm font-semibold">{pct(b.rate)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {b.mentioned} of {b.total} responses mentioned the brand
+              </p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </>
   );
 }
