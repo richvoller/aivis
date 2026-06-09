@@ -72,8 +72,8 @@ export function SuggestedPromptsPanel({ brandId }: { brandId: string }) {
             Suggested prompts
           </CardTitle>
           <CardDescription>
-            Generated from your brand profile, industry, categories, and competitors — based on how
-            people actually ask AI assistants.
+            Generic market queries where you hope to appear — not prompts that name your brand
+            (those are trivially visible). Based on your industry, categories, and competitors.
           </CardDescription>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading || adding}>

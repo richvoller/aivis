@@ -20,18 +20,34 @@ export function RunJobButton({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [msg, setMsg] = React.useState<string | null>(null);
+  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   const run = () =>
     startTransition(async () => {
       setMsg(null);
+      if (pollRef.current) clearInterval(pollRef.current);
+
       const res =
         job === "responses" ? await runBrandResponses(brandId) : await runBrandMentions(brandId);
-      setMsg(res.ok ? (res.message ?? "Done") : (res.error ?? "Failed"));
-      if (res.ok) router.refresh();
+      setMsg(res.ok ? (res.message ?? "Started") : (res.error ?? "Failed"));
+
+      if (res.ok) {
+        router.refresh();
+        pollRef.current = setInterval(() => router.refresh(), 20_000);
+        setTimeout(() => {
+          if (pollRef.current) clearInterval(pollRef.current);
+        }, 600_000);
+      }
     });
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex max-w-md items-center gap-2">
       {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
       <Button onClick={run} disabled={pending} variant="outline" size="sm">
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}

@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getAdminClient } from "./supabase/admin";
-import { runMentionsForBrand, runPromptAllPlatforms, runResponsesForBrand } from "./engine";
+import {
+  estimateCollectionMinutes,
+  repairBrandSnapshots,
+  startMentionsForBrand,
+  startPromptAllPlatforms,
+  startResponsesForBrand,
+} from "./engine";
 import { DEFAULT_MODELS, PLATFORMS, PROMPT_CATEGORIES } from "./constants";
 import { normaliseDomain } from "./utils";
 
@@ -200,19 +206,19 @@ export async function generatePromptsFromCategories(brandId: string): Promise<Ac
   const categories = (brand as { categories?: string[] }).categories ?? [];
   if (categories.length === 0) return fail("No categories defined for this brand");
 
-  const brandName = (brand as { name: string }).name;
   const brandDesc = (brand as { description: string | null }).description ?? "";
 
-  // Generate prompts for each category
+  // Generic category queries — never include the brand name (trivially visible if named)
   const prompts = categories.map((cat) => {
-    const basePrompt = `What are the best ${cat.toLowerCase()} options for ${brandName}?`;
-    const enhancedPrompt = brandDesc
-      ? `${basePrompt} ${brandName} is ${brandDesc}. Provide a comprehensive comparison.`
+    const catLower = cat.toLowerCase();
+    const basePrompt = `What are the best ${catLower} options?`;
+    const prompt_text = brandDesc
+      ? `${basePrompt} I'm looking for something that ${brandDesc.replace(/\.$/, "")}.`
       : basePrompt;
     return {
       brand_id: brandId,
-      prompt_text: enhancedPrompt,
-      category: cat,
+      prompt_text,
+      category: "commercial" as const,
       is_active: true,
     };
   });
@@ -427,35 +433,52 @@ export async function addAllSuggestedPrompts(
 // Run Now + Jobs
 // ---------------------------------------------------------------------------
 export async function runPromptNow(promptId: string): Promise<ActionResult> {
-  try {
-    const rows = await runPromptAllPlatforms(promptId);
-    revalidatePath("/prompts");
-    revalidatePath("/responses");
-    revalidatePath("/");
-    return { ok: true, message: `Collected ${rows.length} responses` };
-  } catch (e) {
-    return fail(e instanceof Error ? e.message : "Run failed");
-  }
+  startPromptAllPlatforms(promptId);
+  return {
+    ok: true,
+    message: `Collecting 4 platform responses in background (${estimateCollectionMinutes(1)}). Refresh shortly.`,
+  };
 }
 
 export async function runBrandResponses(brandId: string): Promise<ActionResult> {
+  const supabase = getAdminClient();
+  const { count } = await supabase
+    .from("tracked_prompts")
+    .select("id", { count: "exact", head: true })
+    .eq("brand_id", brandId)
+    .eq("is_active", true);
+
+  const promptCount = count ?? 0;
+  if (promptCount === 0) return fail("No active prompts — add prompts first");
+
+  startResponsesForBrand(brandId);
+  const eta = estimateCollectionMinutes(promptCount);
+  return {
+    ok: true,
+    message: `Collecting ${promptCount} prompts × 4 platforms in background (${eta}). You can keep browsing — refresh the dashboard when done.`,
+  };
+}
+
+export async function repairSnapshots(brandId: string): Promise<ActionResult> {
   try {
-    const count = await runResponsesForBrand(brandId);
-    revalidatePath("/", "layout");
-    return { ok: true, message: `Collected ${count} responses` };
+    const { reparsed, chatgpt } = await repairBrandSnapshots(brandId);
+    return {
+      ok: true,
+      message: `Repaired ${reparsed} responses${chatgpt ? `, re-collected ${chatgpt} ChatGPT` : ""}`,
+    };
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Job failed");
+    return fail(e instanceof Error ? e.message : "Repair failed");
   }
 }
 
 export async function runBrandMentions(brandId: string): Promise<ActionResult> {
-  try {
-    await runMentionsForBrand(brandId);
-    revalidatePath("/", "layout");
-    return { ok: true, message: "Mentions benchmarking complete" };
-  } catch (e) {
-    return fail(e instanceof Error ? e.message : "Job failed");
-  }
+  startMentionsForBrand(brandId);
+  return {
+    ok: true,
+    message:
+      "Industry benchmarking started (~1 min). Refresh this page when done. " +
+      "Recommended: weekly or monthly, not after every collection.",
+  };
 }
 
 // ---------------------------------------------------------------------------

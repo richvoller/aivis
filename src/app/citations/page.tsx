@@ -1,8 +1,9 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { NoBrand } from "@/components/no-brand";
 import { EmptyState } from "@/components/empty-state";
-import { RunJobButton } from "@/components/run-job-button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -13,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getCurrentBrand } from "@/lib/current-brand";
-import { listCitationDomains } from "@/lib/queries";
+import { getSnapshotCitationDomains, listCitationDomains } from "@/lib/queries";
 
 export default async function CitationsPage() {
   const brand = await getCurrentBrand();
@@ -26,7 +27,22 @@ export default async function CitationsPage() {
     );
   }
 
-  const domains = await listCitationDomains(brand.id);
+  const [mentionsDomains, responseDomains] = await Promise.all([
+    listCitationDomains(brand.id),
+    getSnapshotCitationDomains(brand.id, brand.domain),
+  ]);
+
+  const usingResponseData =
+    responseDomains.length > 0 && responseDomains.length >= mentionsDomains.length;
+  const domains = usingResponseData
+    ? responseDomains.map((d) => ({
+        id: d.domain,
+        domain: d.domain,
+        mention_count: d.mention_count,
+        is_own_domain: d.is_own_domain,
+      }))
+    : mentionsDomains;
+
   const ownCount = domains.filter((d) => d.is_own_domain).reduce((s, d) => s + (d.mention_count ?? 0), 0);
   const thirdPartyCount = domains
     .filter((d) => !d.is_own_domain)
@@ -37,20 +53,38 @@ export default async function CitationsPage() {
     <>
       <PageHeader
         title="Citation Analysis"
-        description={`Domains most cited by AI when answering prompts about ${brand.name}'s space.`}
-      >
-        <RunJobButton brandId={brand.id} job="mentions" label="Refresh citations" />
-      </PageHeader>
+        description={
+          usingResponseData
+            ? `Domains cited in your collected LLM responses for ${brand.name}'s prompts.`
+            : `Domains most cited by AI when answering prompts about ${brand.name}'s space.`
+        }
+      />
 
       {domains.length === 0 ? (
         <EmptyState
           title="No citation data yet"
-          description="Run the mentions job to discover which third-party pages AI models cite."
-        >
-          <RunJobButton brandId={brand.id} job="mentions" label="Refresh citations" />
-        </EmptyState>
+          description="Collect responses to see cited domains from your tracked prompts. For industry citation data, run benchmarking manually on a weekly or monthly schedule."
+        />
       ) : (
         <div className="space-y-4">
+          {usingResponseData ? (
+            <p className="text-sm text-muted-foreground">
+              From your collected responses. Industry citation data is refreshed via{" "}
+              <Link href="/benchmarking" className="text-primary underline-offset-4 hover:underline">
+                Share of Voice benchmarking
+              </Link>{" "}
+              (manual, weekly or monthly).
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Industry dataset — last refreshed when you ran{" "}
+              <Link href="/benchmarking" className="text-primary underline-offset-4 hover:underline">
+                benchmarking
+              </Link>
+              . Re-run there on your usual schedule.
+            </p>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <Card>
               <CardContent className="p-5">
@@ -76,7 +110,9 @@ export default async function CitationsPage() {
             <CardHeader>
               <CardTitle>Top Cited Domains</CardTitle>
               <CardDescription>
-                Domains where competitors appear but you may not — prioritise these for coverage.
+                {usingResponseData
+                  ? "Aggregated from URLs cited across your collected responses."
+                  : "Industry dataset — domains where competitors appear but you may not."}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -106,6 +142,14 @@ export default async function CitationsPage() {
               </Table>
             </CardContent>
           </Card>
+
+          {usingResponseData ? (
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/benchmarking">Industry data → Benchmarking</Link>
+              </Button>
+            </div>
+          ) : null}
         </div>
       )}
     </>

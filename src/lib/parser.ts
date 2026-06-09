@@ -74,10 +74,19 @@ function brandAliases(brandName: string, brandDomain: string, profileAliases: st
 
 /** Find earliest character index any alias appears at, or -1. */
 function firstMentionIndex(text: string, aliases: string[]): number {
-  const lower = text.toLowerCase();
+  if (!text.trim()) return -1;
   let earliest = -1;
   for (const alias of aliases) {
-    const idx = lower.indexOf(alias);
+    if (!alias || alias.length < 2) continue;
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, "i");
+    const match = re.exec(text);
+    if (match) {
+      const idx = match.index;
+      if (earliest === -1 || idx < earliest) earliest = idx;
+      continue;
+    }
+    const idx = text.toLowerCase().indexOf(alias.toLowerCase());
     if (idx !== -1 && (earliest === -1 || idx < earliest)) earliest = idx;
   }
   return earliest;
@@ -187,10 +196,9 @@ export function parseResponse(
     .filter((c) => {
       const root = normaliseDomain(c.domain).split(".")[0];
       const name = (c.name ?? "").toLowerCase();
-      return (
-        (root && lower.includes(root.toLowerCase())) ||
-        (name && lower.includes(name))
-      );
+      const rootMatch = root && firstMentionIndex(text, [root]) !== -1;
+      const nameMatch = name && firstMentionIndex(text, [name]) !== -1;
+      return rootMatch || nameMatch;
     })
     .map((c) => normaliseDomain(c.domain));
 

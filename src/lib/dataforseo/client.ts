@@ -10,6 +10,7 @@ import {
 } from "./mock";
 import type {
   CrossAggregatedRow,
+  CrossAggregatedTarget,
   LlmResponseRequest,
   MentionSearchRow,
   NormalisedLlmResponse,
@@ -42,6 +43,8 @@ function baseUrl(): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const FETCH_TIMEOUT_MS = Number(process.env.DATAFORSEO_TIMEOUT_MS ?? 120_000);
+
 /**
  * POST to a DataForSEO endpoint with the standard `[task]` array body, Basic
  * auth and exponential-backoff retry. Returns the parsed JSON envelope.
@@ -57,6 +60,7 @@ async function post<T = unknown>(path: string, task: Record<string, unknown>, at
       },
       body: JSON.stringify([task]),
       cache: "no-store",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     if (res.status === 429 || res.status >= 500) {
@@ -73,11 +77,55 @@ async function post<T = unknown>(path: string, task: Record<string, unknown>, at
   }
 }
 
+/** DataForSEO URL segment — internal `chatgpt` maps to API `chat_gpt`. */
+export function apiPlatformSegment(platform: Platform): string {
+  return platform === "chatgpt" ? "chat_gpt" : platform;
+}
+
+function firstTask(envelope: unknown): Record<string, unknown> | undefined {
+  const tasks = (envelope as { tasks?: Array<Record<string, unknown>> })?.tasks;
+  return tasks?.[0];
+}
+
 /** Pull the first `tasks[].result[]` array out of a DataForSEO envelope. */
 function firstResult(envelope: unknown): unknown[] {
-  const tasks = (envelope as { tasks?: Array<{ result?: unknown[] }> })?.tasks;
-  const result = tasks?.[0]?.result;
+  const result = firstTask(envelope)?.result;
   return Array.isArray(result) ? result : [];
+}
+
+function assertTaskOk(envelope: unknown): void {
+  const task = firstTask(envelope);
+  const code = task?.status_code as number | undefined;
+  if (code && code !== 20000) {
+    throw new Error(`DataForSEO ${code}: ${task?.status_message ?? "request failed"}`);
+  }
+}
+
+const MENTIONS_LOCATION_CODE = Number(process.env.DATAFORSEO_LOCATION_CODE ?? 2840);
+const MENTIONS_LANGUAGE_CODE = process.env.DATAFORSEO_LANGUAGE_CODE ?? "en";
+
+function buildLlmTask(req: LlmResponseRequest, platform: Platform): Record<string, unknown> {
+  // ChatGPT (chat_gpt) accepts only a minimal parameter set for current models.
+  if (platform === "chatgpt") {
+    const task: Record<string, unknown> = {
+      model_name: req.model_name,
+      user_prompt: req.user_prompt,
+      // Required for fan-out queries and web-grounded answers with citations.
+      web_search: true,
+    };
+    if (req.system_message) task.system_message = req.system_message;
+    return task;
+  }
+
+  const task: Record<string, unknown> = {
+    model_name: req.model_name,
+    user_prompt: req.user_prompt,
+    max_output_tokens: req.max_output_tokens ?? 2048,
+    temperature: req.temperature ?? 0.7,
+  };
+  if (req.system_message) task.system_message = req.system_message;
+  if (req.use_reasoning) task.use_reasoning = true;
+  return task;
 }
 
 /**
@@ -106,12 +154,48 @@ export function normaliseLlmResponse(
   collectText(result?.text);
   collectText((result?.message as Record<string, unknown> | undefined)?.content);
 
+  // Fan-out queries can live at result level
+  const resultFanOut = result?.fan_out_queries;
+  if (Array.isArray(resultFanOut)) {
+    for (const q of resultFanOut) {
+      const text = typeof q === "string" ? q : (q as Record<string, unknown>)?.query;
+      if (typeof text === "string" && text.trim()) fanOut.add(text.trim());
+    }
+  }
+
   for (const item of items) {
     collectText(item.text);
     collectText(item.content);
     collectText((item.message as Record<string, unknown> | undefined)?.content);
 
-    // sources / annotations / citations
+    // Current API shape: items[].sections[].text (skip internal reasoning traces)
+    const sections = item.sections as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(sections)) {
+      for (const section of sections) {
+        const sectionType = section.type as string | undefined;
+        if (sectionType === "reasoning") continue;
+
+        collectText(section.text);
+        collectText(section.content);
+
+        const sectionSources = [
+          section.annotations,
+          section.citations,
+          section.sources,
+          section.references,
+        ];
+        for (const arr of sectionSources) {
+          if (Array.isArray(arr)) {
+            for (const s of arr as Array<Record<string, unknown>>) {
+              const u = (s?.url ?? s?.link ?? s?.source) as unknown;
+              if (typeof u === "string" && /^https?:\/\//.test(u)) cited.add(u);
+            }
+          }
+        }
+      }
+    }
+
+    // sources / annotations / citations (item level)
     const sourceArrays = [item.sources, item.annotations, item.citations, item.references];
     for (const arr of sourceArrays) {
       if (Array.isArray(arr)) {
@@ -175,26 +259,20 @@ export async function getLLMResponse(
     });
   }
 
-  const task: Record<string, unknown> = {
-    model_name: req.model_name,
-    user_prompt: req.user_prompt,
-    max_output_tokens: req.max_output_tokens ?? 2048,
-    temperature: req.temperature ?? 0.7,
-  };
-  if (req.system_message) task.system_message = req.system_message;
-  if (req.use_reasoning) task.use_reasoning = true;
-
+  const segment = apiPlatformSegment(req.platform);
   const envelope = await post(
-    `/v3/ai_optimization/${req.platform}/llm_responses/live`,
-    task,
+    `/v3/ai_optimization/${segment}/llm_responses/live`,
+    buildLlmTask(req, req.platform),
   );
+  assertTaskOk(envelope);
   return normaliseLlmResponse(req.platform, req.model_name, envelope);
 }
 
 export async function getModels(platform: Platform): Promise<string[]> {
   if (isMockMode()) return [DEFAULT_MODELS[platform]];
   try {
-    const res = await fetch(`${baseUrl()}/v3/ai_optimization/${platform}/llm_responses/models`, {
+    const segment = apiPlatformSegment(platform);
+    const res = await fetch(`${baseUrl()}/v3/ai_optimization/${segment}/llm_responses/models`, {
       headers: { Authorization: authHeader() },
       cache: "no-store",
     });
@@ -212,6 +290,25 @@ export async function getModels(platform: Platform): Promise<string[]> {
 // ---------------------------------------------------------------------------
 // LLM Mentions API (Google AIO + ChatGPT dataset)
 // ---------------------------------------------------------------------------
+function mentionGroupElements(
+  row: Record<string, unknown> | undefined,
+  field: string,
+): Array<{ key: string; mentions: number }> {
+  const arr = row?.[field];
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((el) => el as Record<string, unknown>)
+    .filter((el) => el.type === "group_element" && typeof el.key === "string")
+    .map((el) => ({
+      key: el.key as string,
+      mentions: (el.mentions as number) ?? 0,
+    }));
+}
+
+function sumMentions(groups: Array<{ mentions: number }>): number {
+  return groups.reduce((s, g) => s + g.mentions, 0);
+}
+
 export async function searchMentions(
   keyword: string,
   platform: "google" | "chat_gpt",
@@ -219,38 +316,77 @@ export async function searchMentions(
   if (isMockMode()) return mockMentionSearch(keyword, platform);
 
   const envelope = await post("/v3/ai_optimization/llm_mentions/search/live", {
-    keyword,
     platform,
+    location_code: MENTIONS_LOCATION_CODE,
+    language_code: MENTIONS_LANGUAGE_CODE,
+    target: [{ keyword, match_type: "word_match" }],
+    limit: 1,
   });
   const row = firstResult(envelope)[0] as Record<string, unknown> | undefined;
+  const items = (row?.items as Array<Record<string, unknown>>) ?? [];
+  const first = items[0];
   return {
     keyword,
     platform,
-    mention_count: (row?.mention_count as number) ?? 0,
-    ai_search_volume: (row?.ai_search_volume as number) ?? null,
-    monthly_searches: (row?.monthly_searches as number) ?? null,
+    mention_count: (first?.mentions as number) ?? sumMentions(mentionGroupElements(row, "platform")),
+    ai_search_volume: (first?.ai_search_volume as number) ?? (row?.ai_search_volume as number) ?? null,
+    monthly_searches: (first?.monthly_searches as number) ?? null,
     cited_sources: [],
     non_cited_sources: [],
   };
 }
 
 export async function getCrossAggregated(
-  domains: string[],
+  targets: CrossAggregatedTarget[],
   platform: "google" | "chat_gpt" = "google",
 ): Promise<CrossAggregatedRow[]> {
-  if (isMockMode()) return mockCrossAggregated(domains, platform);
+  if (isMockMode()) {
+    return mockCrossAggregated(
+      targets.map((t) => t.domain),
+      platform,
+    );
+  }
+
+  if (targets.length < 2) return [];
 
   const envelope = await post(
     "/v3/ai_optimization/llm_mentions/cross_aggregated_metrics/live",
-    { targets: domains, platform },
+    {
+      platform,
+      location_code: MENTIONS_LOCATION_CODE,
+      language_code: MENTIONS_LANGUAGE_CODE,
+      targets: targets.map((t) => ({
+        aggregation_key: t.key,
+        target: [
+          {
+            keyword: t.keyword ?? t.domain.split(".")[0],
+            match_type: "word_match" as const,
+          },
+        ],
+      })),
+      internal_list_limit: 10,
+    },
   );
-  const rows = firstResult(envelope) as Array<Record<string, unknown>>;
-  const total = rows.reduce((s, r) => s + ((r.mention_count as number) ?? 0), 0) || 1;
+
+  const result = firstResult(envelope)[0] as Record<string, unknown> | undefined;
+  const items = (result?.items as Array<Record<string, unknown>>) ?? [];
+  const rows: CrossAggregatedRow[] = items.map((item) => {
+    const key = (item.key as string) ?? "";
+    const matched = targets.find((t) => t.key === key || t.domain === key);
+    const platformMentions = mentionGroupElements(item, "platform");
+    const mention_count = sumMentions(platformMentions);
+    return {
+      domain: matched?.domain ?? key,
+      mention_count,
+      share_of_voice: 0,
+      platform,
+    };
+  });
+
+  const total = rows.reduce((s, r) => s + r.mention_count, 0) || 1;
   return rows.map((r) => ({
-    domain: (r.target as string) ?? (r.domain as string) ?? "",
-    mention_count: (r.mention_count as number) ?? 0,
-    share_of_voice: Number(((((r.mention_count as number) ?? 0) / total) * 100).toFixed(1)),
-    platform,
+    ...r,
+    share_of_voice: Number(((r.mention_count / total) * 100).toFixed(1)),
   }));
 }
 
@@ -260,12 +396,17 @@ export async function getTopDomains(
 ): Promise<TopDomainRow[]> {
   if (isMockMode()) return mockTopDomains(keyword, platform);
   const envelope = await post("/v3/ai_optimization/llm_mentions/top_domains/live", {
-    keyword,
     platform,
+    location_code: MENTIONS_LOCATION_CODE,
+    language_code: MENTIONS_LANGUAGE_CODE,
+    target: [{ keyword, match_type: "word_match" }],
+    internal_list_limit: 25,
   });
-  return (firstResult(envelope) as Array<Record<string, unknown>>).map((r) => ({
-    domain: (r.domain as string) ?? "",
-    mention_count: (r.mention_count as number) ?? 0,
+  const row = firstResult(envelope)[0] as Record<string, unknown> | undefined;
+  const total = (row?.total as Record<string, unknown> | undefined) ?? row;
+  return mentionGroupElements(total, "sources_domain").map((row) => ({
+    domain: row.key.replace(/^www\./, ""),
+    mention_count: row.mentions,
     platform,
   }));
 }
@@ -276,13 +417,26 @@ export async function getTopPages(
 ): Promise<TopPageRow[]> {
   if (isMockMode()) return mockTopPages(keyword, platform);
   const envelope = await post("/v3/ai_optimization/llm_mentions/top_pages/live", {
-    keyword,
     platform,
+    location_code: MENTIONS_LOCATION_CODE,
+    language_code: MENTIONS_LANGUAGE_CODE,
+    target: [{ keyword, match_type: "word_match" }],
+    internal_list_limit: 25,
   });
-  return (firstResult(envelope) as Array<Record<string, unknown>>).map((r) => ({
-    url: (r.url as string) ?? "",
-    domain: (r.domain as string) ?? "",
-    mention_count: (r.mention_count as number) ?? 0,
+  const row = firstResult(envelope)[0] as Record<string, unknown> | undefined;
+  const total = (row?.total as Record<string, unknown> | undefined) ?? row;
+  return mentionGroupElements(total, "sources_domain").map((row) => ({
+    url: row.key,
+    domain: normaliseDomainFromUrl(row.key),
+    mention_count: row.mentions,
     platform,
   }));
+}
+
+function normaliseDomainFromUrl(url: string): string {
+  try {
+    return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
+  } catch {
+    return url.replace(/^www\./, "");
+  }
 }

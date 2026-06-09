@@ -28,10 +28,12 @@ export default async function ResponsesPage() {
         description={`Browse and inspect raw LLM responses for ${brand.name}.`}
       />
       <ResponseExplorer
+        brandId={brand.id}
         snapshots={snapshots}
         promptMap={promptMap}
         brandName={brand.name}
         brandDomain={brand.domain}
+        brandAliases={brand.brand_aliases}
       />
     </>
   );

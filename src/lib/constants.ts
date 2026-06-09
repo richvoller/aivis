@@ -21,17 +21,18 @@ export const PLATFORM_COLORS: Record<Platform, string> = {
  * endpoint; these are sensible defaults the user can override per prompt.
  */
 export const DEFAULT_MODELS: Record<Platform, string> = {
-  chatgpt: "gpt-4o",
+  chatgpt: "gpt-5.5",
   claude: "claude-sonnet-4-6",
-  gemini: "gemini-2.0-flash",
+  gemini: "gemini-3.5-flash",
   perplexity: "sonar-reasoning-pro",
 };
 
+/** Curated list — DataForSEO exposes more via each platform's /models endpoint. */
 export const PLATFORM_MODEL_OPTIONS: Record<Platform, string[]> = {
-  chatgpt: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o3"],
-  claude: ["claude-sonnet-4-6", "claude-opus-4-1", "claude-haiku-4-5"],
-  gemini: ["gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash"],
-  perplexity: ["sonar", "sonar-pro", "sonar-reasoning-pro"],
+  chatgpt: ["gpt-5.5", "gpt-5.4", "gpt-5.2", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4o"],
+  claude: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-opus-4-6", "claude-opus-4-5"],
+  gemini: ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
+  perplexity: ["sonar-reasoning-pro", "sonar-pro", "sonar"],
 };
 
 export const PROMPT_CATEGORIES = [

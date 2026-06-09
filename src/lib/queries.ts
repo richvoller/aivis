@@ -1,4 +1,5 @@
 import "server-only";
+import { collectAllCitations } from "./citations";
 import { getAdminClient } from "./supabase/admin";
 import { PLATFORMS, type Platform } from "./constants";
 import type {
@@ -10,6 +11,7 @@ import type {
   PromptWithConfig,
   ResponseSnapshot,
 } from "./types";
+import { formatDate, normaliseDomain } from "./utils";
 
 export async function listBrands(): Promise<Brand[]> {
   const supabase = getAdminClient();
@@ -196,6 +198,63 @@ export async function listSovSnapshots(brandId: string): Promise<CompetitorSovSn
   return data as CompetitorSovSnapshot[];
 }
 
+export interface BenchmarkSchedule {
+  lastRunDate: string | null;
+  runCount: number;
+  /** Human-readable guidance for when to run next. */
+  recommendation: string;
+}
+
+export function benchmarkScheduleFromSnapshots(
+  snapshots: CompetitorSovSnapshot[],
+): BenchmarkSchedule {
+  const dates = [...new Set(snapshots.map((s) => s.snapshot_date))].sort();
+  const lastRunDate = dates.at(-1) ?? null;
+  const runCount = dates.length;
+
+  if (!lastRunDate) {
+    return {
+      lastRunDate: null,
+      runCount: 0,
+      recommendation:
+        "Run once after your first response collection to establish an industry baseline. " +
+        "After that, run weekly or monthly — benchmarking uses a separate paid API (~$0.70 per run).",
+    };
+  }
+
+  const daysSince = Math.floor(
+    (Date.now() - new Date(lastRunDate).getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  if (daysSince >= 30) {
+    return {
+      lastRunDate,
+      runCount,
+      recommendation: `Last run was ${daysSince} days ago — due for a monthly refresh.`,
+    };
+  }
+  if (daysSince >= 7) {
+    return {
+      lastRunDate,
+      runCount,
+      recommendation: `Last run was ${daysSince} days ago — consider a weekly refresh.`,
+    };
+  }
+
+  const nextWeekly = new Date(lastRunDate);
+  nextWeekly.setDate(nextWeekly.getDate() + 7);
+  return {
+    lastRunDate,
+    runCount,
+    recommendation: `Up to date. Next recommended run: ${formatDate(nextWeekly)} (weekly) or monthly thereafter.`,
+  };
+}
+
+export async function getBenchmarkSchedule(brandId: string): Promise<BenchmarkSchedule> {
+  const snapshots = await listSovSnapshots(brandId);
+  return benchmarkScheduleFromSnapshots(snapshots);
+}
+
 export async function listCitationDomains(brandId: string): Promise<CitationDomain[]> {
   const supabase = getAdminClient();
   const { data, error } = await supabase
@@ -205,6 +264,71 @@ export async function listCitationDomains(brandId: string): Promise<CitationDoma
     .order("mention_count", { ascending: false });
   if (error) throw error;
   return data as CitationDomain[];
+}
+
+/** Domains cited in collected LLM responses (live response snapshots). */
+export async function getSnapshotCitationDomains(
+  brandId: string,
+  brandDomain: string,
+): Promise<Array<{ domain: string; mention_count: number; is_own_domain: boolean }>> {
+  const snapshots = await listSnapshots(brandId, { limit: 5000 });
+  const ownRoot = normaliseDomain(brandDomain);
+  const counts = new Map<string, number>();
+
+  for (const snap of snapshots) {
+    const links = collectAllCitations(snap.response_text, snap.cited_urls, snap.raw_response);
+    for (const link of links) {
+      const domain = normaliseDomain(link.url);
+      if (!domain) continue;
+      counts.set(domain, (counts.get(domain) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .map(([domain, mention_count]) => ({
+      domain,
+      mention_count,
+      is_own_domain: domain === ownRoot,
+    }))
+    .sort((a, b) => b.mention_count - a.mention_count);
+}
+
+export interface SnapshotSovRow {
+  domain: string;
+  is_own: boolean;
+  mentions: number;
+  share_of_voice: number;
+}
+
+/** Mention share computed from collected responses (brand + known competitors). */
+export async function getSnapshotSov(
+  brandId: string,
+  brand: Brand,
+  competitors: Competitor[],
+): Promise<SnapshotSovRow[]> {
+  const snapshots = await listSnapshots(brandId, { limit: 5000 });
+  const ownDomain = normaliseDomain(brand.domain);
+  const counts = new Map<string, number>();
+  counts.set(ownDomain, 0);
+  for (const c of competitors) counts.set(normaliseDomain(c.domain), 0);
+
+  for (const snap of snapshots) {
+    if (snap.brand_mentioned) counts.set(ownDomain, (counts.get(ownDomain) ?? 0) + 1);
+    for (const d of snap.competitors_mentioned ?? []) {
+      const key = normaliseDomain(d);
+      if (counts.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+
+  const total = [...counts.values()].reduce((s, n) => s + n, 0) || 1;
+  return [...counts.entries()]
+    .map(([domain, mentions]) => ({
+      domain,
+      is_own: domain === ownDomain,
+      mentions,
+      share_of_voice: Number(((mentions / total) * 100).toFixed(1)),
+    }))
+    .sort((a, b) => b.share_of_voice - a.share_of_voice);
 }
 
 export async function listActionItems(brandId: string): Promise<ActionItem[]> {

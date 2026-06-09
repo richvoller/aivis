@@ -39,9 +39,9 @@ begin
   -- Per-platform model config for every prompt
   for v_prompt in select id from public.tracked_prompts where brand_id = v_brand_id loop
     insert into public.prompt_platform_config (prompt_id, platform, model_name) values
-      (v_prompt.id, 'chatgpt', 'gpt-4o'),
+      (v_prompt.id, 'chatgpt', 'gpt-5.5'),
       (v_prompt.id, 'claude', 'claude-sonnet-4-6'),
-      (v_prompt.id, 'gemini', 'gemini-2.0-flash'),
+      (v_prompt.id, 'gemini', 'gemini-3.5-flash'),
       (v_prompt.id, 'perplexity', 'sonar-reasoning-pro');
   end loop;
 
@@ -49,9 +49,9 @@ begin
   for v_prompt in select id, prompt_text from public.tracked_prompts where brand_id = v_brand_id loop
     foreach v_platform in array array['chatgpt','claude','gemini','perplexity'] loop
       v_model := case v_platform
-        when 'chatgpt' then 'gpt-4o'
+        when 'chatgpt' then 'gpt-5.5'
         when 'claude' then 'claude-sonnet-4-6'
-        when 'gemini' then 'gemini-2.0-flash'
+        when 'gemini' then 'gemini-3.5-flash'
         else 'sonar-reasoning-pro' end;
 
       for v_day in 0..29 loop

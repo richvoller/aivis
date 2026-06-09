@@ -180,6 +180,14 @@ function RunNowButton({ promptId }: { promptId: string }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [msg, setMsg] = React.useState<string | null>(null);
+  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
   return (
     <div className="flex items-center gap-2">
       {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
@@ -190,9 +198,16 @@ function RunNowButton({ promptId }: { promptId: string }) {
         onClick={() =>
           startTransition(async () => {
             setMsg(null);
+            if (pollRef.current) clearInterval(pollRef.current);
             const res = await runPromptNow(promptId);
-            setMsg(res.ok ? (res.message ?? "Done") : (res.error ?? "Failed"));
-            if (res.ok) router.refresh();
+            setMsg(res.ok ? (res.message ?? "Started") : (res.error ?? "Failed"));
+            if (res.ok) {
+              router.refresh();
+              pollRef.current = setInterval(() => router.refresh(), 15_000);
+              setTimeout(() => {
+                if (pollRef.current) clearInterval(pollRef.current);
+              }, 300_000);
+            }
           })
         }
       >

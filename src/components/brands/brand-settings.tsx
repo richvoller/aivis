@@ -232,7 +232,7 @@ export function BrandSettings({
             <Separator />
             <ArrayInputSection
               label="Categories"
-              description="Market topics for auto-generating prompts (e.g. CRM, sales automation). Separate from prompt intent categories on the Prompts page."
+              description="Market topics for generic visibility prompts (e.g. CRM, sales automation). Prompts never include your brand name."
               items={brand.categories}
               fieldName="categories"
             />

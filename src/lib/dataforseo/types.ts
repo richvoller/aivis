@@ -37,6 +37,14 @@ export interface MentionSearchRow {
   non_cited_sources: string[];
 }
 
+export interface CrossAggregatedTarget {
+  /** Label used in API response `items[].key`. */
+  key: string;
+  domain: string;
+  /** Brand/competitor name for keyword matching in the mentions dataset. */
+  keyword?: string;
+}
+
 export interface CrossAggregatedRow {
   domain: string;
   mention_count: number;

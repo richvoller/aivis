@@ -199,10 +199,10 @@ If you've defined categories for your brand, you can auto-generate prompts:
 ### Configuring Platform Models
 
 For each prompt, you can configure:
-- **ChatGPT** - Model name (default: `gpt-4o`)
-- **Claude** - Model name (default: `claude-3-5-sonnet-20241022`)
-- **Gemini** - Model name (default: `gemini-pro`)
-- **Perplexity** - Model name (default: `sonar-medium-online`)
+- **ChatGPT** - Model name (default: `gpt-5.5`)
+- **Claude** - Model name (default: `claude-sonnet-4-6`)
+- **Gemini** - Model name (default: `gemini-3.5-flash`)
+- **Perplexity** - Model name (default: `sonar-reasoning-pro`)
 
 Toggle the **Active** switch to include/exclude a platform from tracking.
 
