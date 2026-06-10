@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getAdminClient } from "./supabase/admin";
+import { refreshActionItemsForBrand } from "./action-items";
 import {
   estimateCollectionMinutes,
   repairBrandSnapshots,
@@ -490,4 +491,19 @@ export async function toggleActionItem(id: string, isDone: boolean): Promise<Act
   if (error) return fail(error.message);
   revalidatePath("/action-items");
   return { ok: true };
+}
+
+export async function refreshActionItems(brandId: string): Promise<ActionResult> {
+  try {
+    const count = await refreshActionItemsForBrand(brandId);
+    return {
+      ok: true,
+      message:
+        count === 0
+          ? "No recommendations yet — collect more responses first."
+          : `Updated ${count} recommendation${count === 1 ? "" : "s"}.`,
+    };
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Failed to refresh recommendations");
+  }
 }

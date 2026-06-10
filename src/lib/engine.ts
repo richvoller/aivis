@@ -9,6 +9,7 @@ import {
   searchMentions,
   type BrandContext,
 } from "./dataforseo/client";
+import { refreshActionItemsForBrand } from "./action-items";
 import { collectAllCitations } from "./citations";
 import { parseResponse } from "./parser";
 import type { Platform } from "./constants";
@@ -355,6 +356,11 @@ export function startResponsesForBrand(brandId: string): void {
   void runResponsesForBrand(brandId)
     .then(async () => {
       await reparseSnapshotsForBrand(brandId);
+      try {
+        await refreshActionItemsForBrand(brandId);
+      } catch (err) {
+        console.error("[collection] action items refresh failed:", err);
+      }
       revalidatePath("/", "layout");
       revalidatePath("/responses");
       revalidatePath("/prompts");
@@ -362,6 +368,7 @@ export function startResponsesForBrand(brandId: string): void {
       revalidatePath("/categories");
       revalidatePath("/benchmarking");
       revalidatePath("/citations");
+      revalidatePath("/action-items");
     })
     .catch((err) => console.error("[collection] brand responses failed:", err));
 }
@@ -375,11 +382,17 @@ export async function repairBrandSnapshots(brandId: string): Promise<{ reparsed:
   } catch (err) {
     console.error("[collection] ChatGPT re-collect failed:", err);
   }
+  try {
+    await refreshActionItemsForBrand(brandId);
+  } catch (err) {
+    console.error("[collection] action items refresh failed:", err);
+  }
   revalidatePath("/", "layout");
   revalidatePath("/responses");
   revalidatePath("/fan-out");
   revalidatePath("/benchmarking");
   revalidatePath("/citations");
+  revalidatePath("/action-items");
   return { reparsed, chatgpt };
 }
 
