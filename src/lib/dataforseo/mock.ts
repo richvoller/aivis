@@ -44,7 +44,10 @@ export function mockLlmResponse(args: {
 }): NormalisedLlmResponse {
   const { platform, model_name, user_prompt, brandName, competitorNames } = args;
   const rng = seeded(`${platform}:${user_prompt}`);
-  const mentioned = rng() < 0.6;
+  const promptMentionsBrand =
+    brandName.length > 0 &&
+    user_prompt.toLowerCase().includes(brandName.toLowerCase());
+  const mentioned = promptMentionsBrand || rng() < 0.75;
 
   const competitorList = competitorNames.length
     ? competitorNames.join(", ")

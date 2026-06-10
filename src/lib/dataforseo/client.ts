@@ -25,8 +25,11 @@ export interface BrandContext {
 }
 
 export function isMockMode(): boolean {
-  const forced = process.env.DATAFORSEO_USE_MOCK === "true";
-  const hasCreds = !!process.env.DATAFORSEO_LOGIN && !!process.env.DATAFORSEO_PASSWORD;
+  const flag = process.env.DATAFORSEO_USE_MOCK?.trim().toLowerCase();
+  const forced = flag === "true" || flag === "1";
+  const login = process.env.DATAFORSEO_LOGIN?.trim();
+  const password = process.env.DATAFORSEO_PASSWORD?.trim();
+  const hasCreds = !!login && !!password;
   return forced || !hasCreds;
 }
 

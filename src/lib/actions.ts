@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getAdminClient } from "./supabase/admin";
 import { refreshActionItemsForBrand } from "./action-items";
+import { loadDemoBrandData } from "./demo-data";
+import { selectBrand } from "./brand-actions";
 import {
   estimateCollectionMinutes,
   repairBrandSnapshots,
@@ -505,5 +507,27 @@ export async function refreshActionItems(brandId: string): Promise<ActionResult>
     };
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Failed to refresh recommendations");
+  }
+}
+
+/** Load the Acme CRM demo brand (30 days of sample data). Safe to run in mock mode. */
+export async function loadDemoData(): Promise<ActionResult> {
+  try {
+    const brandId = await loadDemoBrandData();
+    await selectBrand(brandId);
+    revalidatePath("/", "layout");
+    revalidatePath("/responses");
+    revalidatePath("/prompts");
+    revalidatePath("/fan-out");
+    revalidatePath("/categories");
+    revalidatePath("/benchmarking");
+    revalidatePath("/citations");
+    revalidatePath("/action-items");
+    return {
+      ok: true,
+      message: "Loaded Acme CRM demo brand with 30 days of sample visibility data.",
+    };
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Failed to load demo data");
   }
 }
